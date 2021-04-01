@@ -40,7 +40,18 @@ let selectClick = new ol.interaction.Select({
     hitTolerance: 5
 });
 
-
+function sectMultiLine(coordinates) {
+    let turfString = turf.bezierSpline(turf.toWgs84(turf.lineString(coordinates)));
+    let turfChunk = turf.toMercator(turf.lineChunk(turfString, 0.05));  // Получаем FeatureCollection
+    let arrayOfLines = turfChunk.features;
+    let result = [];
+    let startPoint = arrayOfLines[0]['geometry']['coordinates'][0];  // Берём первую точку первого лайнстринга
+    result.push(startPoint);
+    for (let i = 0; i < arrayOfLines.length; i++) {
+        result.push(arrayOfLines[i]['geometry']['coordinates'][1]);
+    }
+    return result;
+}
 
 selectClick.on(
     'select',
@@ -62,12 +73,10 @@ selectClick.on(
             // Собственно, это задел под работу с Турфом. Во-первых, нужно получить больше точек, в которые будет вставать маркер.
             // (для этого и будем использовать Турф, там есть нужная функция lineChunk),
             // во-вторых, уменьшим интервал. Не секунда, а десятая часть секунды или типа того.
-
-            // let prePathAnim = eFeatures.getArray()[0];
-            // let turfPrePathAnim = turf.lineString(prePathAnim.getGeometry().getCoordinates());
-            // let 
-            
-            // Пока же РЕАЛИЗОВАНА анимация точки, которая появляется поочерёдно в каждой вершине ломаной линии.
+            // let pathAnim = eFeatures.getArray()[0];
+            let prePathAnim = eFeatures.getArray()[0];
+            let sectedCoordinates = sectMultiLine(prePathAnim.getGeometry().getCoordinates());
+            console.log(JSON.stringify(sectedCoordinates));
             
            
             let aniCoords = pathAnim.getGeometry().getCoordinates();
@@ -75,23 +84,24 @@ selectClick.on(
             let i = 0;
 
             let aniPoint = new ol.Feature({
-                geometry: new ol.geom.Point()
+                geometry: new ol.geom.Point(aniCoords[0])
             });
             source.addFeature(aniPoint);
+            aniPoint.setId('aniPoint');
 
             function myLoop() {
                 setTimeout(
                     function () {
-                        if (i === aniCoords.length) {
+                        if (i === sectedCoordinates.length) {
                             i = 0;        
                         }
-                        aniPoint.getGeometry().setCoordinates(aniCoords[i]);
+                        aniPoint.getGeometry().setCoordinates(sectedCoordinates[i]);
                         i++;
-                        if (i <= aniCoords.length) {
+                        if (i <= sectedCoordinates.length) {
                             myLoop();        
                         }
                     },
-                    1000
+                    50
                 )
             }
 
@@ -130,7 +140,18 @@ function onSelect() {
 }
 
 function onStop() {
+    // Перво-наперво снимаем выделение.
+    selectClick.getFeatures().clear();
     map.removeInteraction(selectClick);
     map.removeInteraction(draw);
     map.removeInteraction(modify);
+
+    
+    try {
+        let featureToDelete = source.getFeatureById('aniPoint');
+        source.removeFeature(featureToDelete);
+    } catch {
+        // А тут мы просто ничего не делаем.
+    }
+    
 }
