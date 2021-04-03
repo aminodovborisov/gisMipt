@@ -60,20 +60,7 @@ selectClick.on(
         if (eFeatures.getLength() > 0) {
             let pathAnim = eFeatures.getArray()[0];  // Предусмотрено выделение только одного объекта. Стало быть, можем спокойно брать нулевой элемент массива.
 
-            /* TODO: здесь реализовать анимацию вдоль полученной линии.
-               Пожалуй, здесь стоит использовать не готовый алгоритм анимации (мне он кажется избыточным),
-               а написать свой примерно по следующей схеме:
-               1. С помощью библиотеки turf.js разделить линию на участки, каждый длиной метров по 100,
-               2. Загнать полученные координаты в массив,
-               3. Пробежаться по этому циклу, на каждом шаге назначать координаты точке, которую анимируем.
-               4. В принципе, зная координаты следующей точки, можно запросто задавать угол поворота. Тогда можно будет
-                  анимировать не простой квадратик или кружочек, а, например, значок самолётика или ракеты.
-             */
-
-            // Собственно, это задел под работу с Турфом. Во-первых, нужно получить больше точек, в которые будет вставать маркер.
-            // (для этого и будем использовать Турф, там есть нужная функция lineChunk),
-            // во-вторых, уменьшим интервал. Не секунда, а десятая часть секунды или типа того.
-            // let pathAnim = eFeatures.getArray()[0];
+            // Далее реализована анимация одной линии.
             let prePathAnim = eFeatures.getArray()[0];
             let sectedCoordinates = sectMultiLine(prePathAnim.getGeometry().getCoordinates());
             console.log(JSON.stringify(sectedCoordinates));
@@ -120,6 +107,53 @@ map.on(
 );
 */
 
+// TODO: добавить слушатель события "двойной клик". Если event.target окажется лайнстрингом, то пробежимся по
+// координатам вершин и найдём ту, чьи координаты ближе всего к координатам щелчка. Вернее, даже не просто ближе,
+// а подходят под hitTolerance. И эту точку удаляем.
+
+draw.on(
+    'drawstart',
+    function (e) {
+        document.addEventListener(
+            'keyup',
+            function () {
+                // alert(event.keyCode);
+                if (event.keyCode === 27) {
+                    draw.removeLastPoint();
+                    draw.finishDrawing();
+                    document.removeEventListener('keyup');  // Больше не слушаем нажатие Эскейпа.
+                } else {
+                    if (event.keyCode === 8) {
+                        draw.removeLastPoint();
+                    }
+                }
+            }
+        )
+        document.addEventListener(
+            'contextmenu',
+            function () {
+                draw.removeLastPoint();
+                draw.finishDrawing();
+                document.removeEventListener('contextmenu');  // Больше не слушаем нажатие Эскейпа.
+            }
+        )
+    }
+)
+
+// По просьбе Алексея, включаем режим редактирования траекторий
+// после окончания рисования.
+draw.on(
+    'drawend',
+    function () {
+        // TODO: Сделать так, чтобы вместо основного лайнстринга отображался turf.bezierSpline,
+        // построенный на основе этого лайнстринга. Кроме того, должны отображаться контрольные точки,
+        // то есть вершины этого сплайна.
+        map.addInteraction(modify);
+        map.removeInteraction(draw);
+        map.removeInteraction(selectClick);
+    }
+);
+
 function startDraw() {
     map.removeInteraction(modify);
     map.addInteraction(draw);
@@ -127,6 +161,8 @@ function startDraw() {
 }
 
 function modifyDraw() {
+    // TODO: в случае modifyend (или как там называется это событие) должен отображаться, опять же, не лайнстринг,
+    // а сплайн.
     map.addInteraction(modify);
     map.removeInteraction(draw);
     map.removeInteraction(selectClick);
@@ -146,7 +182,7 @@ function onStop() {
     map.removeInteraction(draw);
     map.removeInteraction(modify);
 
-    
+    // Теперь удаляем анимированный объект.
     try {
         let featureToDelete = source.getFeatureById('aniPoint');
         source.removeFeature(featureToDelete);
@@ -155,3 +191,6 @@ function onStop() {
     }
     
 }
+
+// TODO: добавить инструмент удаления траектории. По сути, нужно включить 
+// интерекшн selectClick, но с дополнительной опцией, типа toDelete = true / false.
