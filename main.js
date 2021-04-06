@@ -10,16 +10,25 @@ var raster = new ol.layer.Tile({
 
 var source = new ol.source.Vector();
 
-let animaStyle = function (feature) {
-    
-}
 
 var vector = new ol.layer.Vector({
     source: source
 });
 
+var sourcePoint = new ol.source.Vector();
+
+var vectorPoint = new ol.layer.Vector({
+	source: sourcePoint
+});
+
+let aniPoint = new ol.Feature();
+
 var map = new ol.Map({
-    layers: [raster, vector],
+    layers: [
+		raster, 
+		vector,
+		vectorPoint
+	],
     target: 'map',
     view: new ol.View({
         center: [4242003.539015969, 7480088.823880755],
@@ -32,11 +41,16 @@ var draw = new ol.interaction.Draw({
     type: 'LineString'
 });
 
+
 var modify = new ol.interaction.Modify({
     source: source
 });
 
 let selectClick = new ol.interaction.Select({
+    hitTolerance: 5
+});
+
+let selectToDelete = new ol.interaction.Select({
     hitTolerance: 5
 });
 
@@ -52,6 +66,18 @@ function sectMultiLine(coordinates) {
     }
     return result;
 }
+
+selectToDelete.on(
+    'select',
+    function (e) {
+        let eFeature = e.target.getFeatures().getArray()[0];  // Взяли фичу и ставим вопрос об удалении
+        if (confirm('Удалить этот объект?')) {
+            source.removeFeature(eFeature);
+        }
+    }
+)
+
+
 
 selectClick.on(
     'select',
@@ -69,14 +95,8 @@ selectClick.on(
             let aniCoords = pathAnim.getGeometry().getCoordinates();
 
             let i = 0;
-
-            let aniPoint = new ol.Feature({
-                geometry: new ol.geom.Point(aniCoords[0])
-            });
-            source.addFeature(aniPoint);
-            aniPoint.setId('aniPoint');
-
-            function myLoop() {
+		
+			function myLoop() {
                 setTimeout(
                     function () {
                         if (i === sectedCoordinates.length) {
@@ -140,27 +160,46 @@ draw.on(
     }
 )
 
+
+
 // По просьбе Алексея, включаем режим редактирования траекторий
 // после окончания рисования.
 draw.on(
     'drawend',
-    function () {
+    function (e) {
         // TODO: Сделать так, чтобы вместо основного лайнстринга отображался turf.bezierSpline,
         // построенный на основе этого лайнстринга. Кроме того, должны отображаться контрольные точки,
         // то есть вершины этого сплайна.
         map.addInteraction(modify);
         map.removeInteraction(draw);
         map.removeInteraction(selectClick);
+		map.removeInteraction(selectToDelete);
+		
+		// Теперь на стартовой точке нарисованной траектории поставим анимируемый объект.
+		// Но анимировать не будем, пока траектория не будет выбрана.
+		let eFeature = e.feature;
+		aniPoint.setGeometry(new ol.geom.Point(eFeature.getGeometry().getCoordinates()[0]));
+		sourcePoint.addFeature(aniPoint);
+		aniPoint.setId('aniPoint');
     }
 );
 
-function startDraw() {
+map.on(
+	'dblclick',
+	function (e) {
+		console.log(e.target);
+	}
+)
+
+let deleteByDbClick = false;  // Глобальная переменная - включен ли режим удаления вершины по двойному щелчку
+
+function drawObject() {
     map.removeInteraction(modify);
     map.addInteraction(draw);
     map.removeInteraction(selectClick);
 }
 
-function modifyDraw() {
+function modifyObject() {
     // TODO: в случае modifyend (или как там называется это событие) должен отображаться, опять же, не лайнстринг,
     // а сплайн.
     map.addInteraction(modify);
@@ -194,3 +233,9 @@ function onStop() {
 
 // TODO: добавить инструмент удаления траектории. По сути, нужно включить 
 // интерекшн selectClick, но с дополнительной опцией, типа toDelete = true / false.
+function deleteObject() {
+    map.removeInteraction(draw);
+    map.removeInteraction(modify);
+    map.removeInteraction(selectClick);
+    map.addInteraction(selectToDelete);
+}
