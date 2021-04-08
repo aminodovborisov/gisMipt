@@ -1,29 +1,64 @@
-var justSelect = false;  // Отличаем селект при рисовании от собственно пользовательского селекта
+let infoPanel = document.getElementById('info');
+console.log(infoPanel);
+
+// infoPanel.innerHTML = 'Здравствуйте! Рисуйте, правьте, показывайте, удаляйте.';
+
+let justSelect = false;  // Отличаем селект при рисовании от собственно пользовательского селекта
 
 let goOnAnimation = false;  // Прекращаем анимацию, если false
 
+let idGen = 0;  // Глобальная переменная - счётчик лайнстрингов
 
-
-var raster = new ol.layer.Tile({
+let raster = new ol.layer.Tile({
     source: new ol.source.OSM(),
 });
 
-var source = new ol.source.Vector();
+let source = new ol.source.Vector();
 
 
-var vector = new ol.layer.Vector({
+let vector = new ol.layer.Vector({
     source: source
 });
 
-var sourcePoint = new ol.source.Vector();
+let sourcePoint = new ol.source.Vector();
 
-var vectorPoint = new ol.layer.Vector({
+let vectorPoint = new ol.layer.Vector({
 	source: sourcePoint
 });
 
-let aniPoint = new ol.Feature();
+let startPointFill = new ol.style.Fill({
+	color: '#ffffff'
+});
 
-var map = new ol.Map({
+let startPointStroke = new ol.style.Stroke({
+	color: '#ff0000',
+	width: 1.25
+});
+
+let startPointStyle = new ol.style.Style({
+    image: new ol.style.Circle({
+		fill: startPointFill,
+		stroke: startPointStroke,
+		radius: 5
+    })
+});
+
+let lineStringStyle = new ol.style.Style({
+	stroke: new ol.style.Stroke({
+		color: "#ff0000",
+		width: 1.3
+	})
+});
+
+let vertexPointStyle = new ol.style.Style({
+	image: new ol.style.Circle({
+		fill: startPointFill,
+		stroke: startPointStroke,
+		radius: 3
+	})
+});
+
+let map = new ol.Map({
     layers: [
 		raster, 
 		vector,
@@ -36,14 +71,15 @@ var map = new ol.Map({
     }),
 });
 
-var draw = new ol.interaction.Draw({
+let draw = new ol.interaction.Draw({
     source: source,
     type: 'LineString'
 });
 
 
-var modify = new ol.interaction.Modify({
-    source: source
+let modify = new ol.interaction.Modify({
+    source: source,
+	deleteCondition: ol.events.condition.doubleClick
 });
 
 let selectClick = new ol.interaction.Select({
@@ -72,7 +108,9 @@ selectToDelete.on(
     function (e) {
         let eFeature = e.target.getFeatures().getArray()[0];  // Взяли фичу и ставим вопрос об удалении
         if (confirm('Удалить этот объект?')) {
-            source.removeFeature(eFeature);
+            let pointToDeleteId = eFeature.getId() + 'start';
+			source.removeFeature(eFeature);
+			sourcePoint.removeFeature(sourcePoint.getFeatureById(pointToDeleteId));
         }
     }
 )
@@ -141,7 +179,7 @@ draw.on(
                 if (event.keyCode === 27) {
                     draw.removeLastPoint();
                     draw.finishDrawing();
-                    document.removeEventListener('keyup');  // Больше не слушаем нажатие Эскейпа.
+                    // document.removeEventListener('keyup');  // Больше не слушаем нажатие Эскейпа.
                 } else {
                     if (event.keyCode === 8) {
                         draw.removeLastPoint();
@@ -154,7 +192,7 @@ draw.on(
             function () {
                 draw.removeLastPoint();
                 draw.finishDrawing();
-                document.removeEventListener('contextmenu');  // Больше не слушаем нажатие Эскейпа.
+                // document.removeEventListener('contextmenu');  // Больше не слушаем нажатие Эскейпа.
             }
         )
     }
@@ -178,18 +216,60 @@ draw.on(
 		// Теперь на стартовой точке нарисованной траектории поставим анимируемый объект.
 		// Но анимировать не будем, пока траектория не будет выбрана.
 		let eFeature = e.feature;
-		aniPoint.setGeometry(new ol.geom.Point(eFeature.getGeometry().getCoordinates()[0]));
-		sourcePoint.addFeature(aniPoint);
-		aniPoint.setId('aniPoint');
+		eFeature.setStyle(lineStringStyle);
+		eFeature.setId('LineString' + idGen);
+		let startPoint = new ol.Feature({
+			geometry: new ol.geom.Point(eFeature.getGeometry().getCoordinates()[0])
+		});
+		startPoint.setId(eFeature.getId() + 'start');
+		startPoint.setStyle(startPointStyle);
+		sourcePoint.addFeature(startPoint);
+		console.log(eFeature.getId() + ' ' + startPoint.getId());
+		idGen++;  // Инкремент глобальной переменной для следующего объекта
+		
+		let efCoordinates = eFeature.getGeometry().getCoordinates();
+		for (let i = 1; i < efCoordinates.length; i++) {
+			let vertexPoint = new ol.Feature({
+				geometry: new ol.geom.Point(efCoordinates[i])
+			});
+			vertexPoint.setId(eFeature.getId() + 'vertex' + i);
+			vertexPoint.setStyle(vertexPointStyle);
+			sourcePoint.addFeature(vertexPoint);
+		}
     }
 );
 
-map.on(
-	'dblclick',
+// Если изменена геометрия линии, то нужно удалить соответствующие ей точки
+// и поставить заново.
+modify.on(
+	'modifyend', 
 	function (e) {
-		console.log(e.target);
+		let eFeature = e.features.getArray()[0];
+		console.log(eFeature.getId());
+		sourcePoint.removeFeature(sourcePoint.getFeatureById(eFeature.getId() + 'start'));
+		for (let i = 1; i < eFeature.getGeometry().getCoordinates().length + 1; i++) {
+			try {
+				sourcePoint.removeFeature(sourcePoint.getFeatureById(eFeature.getId() + 'vertex' + i));
+			} catch {}
+		}
+		let startPoint = new ol.Feature({
+			geometry: new ol.geom.Point(eFeature.getGeometry().getCoordinates()[0])
+		});
+		startPoint.setId(eFeature.getId() + 'start');
+		startPoint.setStyle(startPointStyle);
+		sourcePoint.addFeature(startPoint);
+		let efCoordinates = eFeature.getGeometry().getCoordinates();
+		for (let i = 1; i < efCoordinates.length; i++) {
+			let vertexPoint = new ol.Feature({
+				geometry: new ol.geom.Point(efCoordinates[i])
+			});
+			vertexPoint.setId(eFeature.getId() + 'vertex' + i);
+			vertexPoint.setStyle(vertexPointStyle);
+			sourcePoint.addFeature(vertexPoint);
+		}
+		
 	}
-)
+);
 
 let deleteByDbClick = false;  // Глобальная переменная - включен ли режим удаления вершины по двойному щелчку
 
