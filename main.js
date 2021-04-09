@@ -26,6 +26,18 @@ let vectorPoint = new ol.layer.Vector({
 	source: sourcePoint
 });
 
+let sourceTrac = new ol.source.Vector();
+
+let vectorTrac = new ol.layer.Vector({
+	source: sourceTrac
+});
+
+let sourceAnim = new ol.source.Vector();
+
+let vectorAnim = new ol.layer.Vector({
+	source: sourceAnim
+}) 
+
 let startPointFill = new ol.style.Fill({
 	color: '#ffffff'
 });
@@ -46,6 +58,16 @@ let startPointStyle = new ol.style.Style({
 let lineStringStyle = new ol.style.Style({
 	stroke: new ol.style.Stroke({
 		color: "#ff0000",
+		width: 0.5,
+		lineDash: [4, 3]
+	})
+});
+
+
+
+let traectoryStyle = new ol.style.Style({
+	stroke: new ol.style.Stroke({
+		color: "#ff0000",
 		width: 1.3
 	})
 });
@@ -62,7 +84,8 @@ let map = new ol.Map({
     layers: [
 		raster, 
 		vector,
-		vectorPoint
+		vectorPoint,
+		vectorTrac
 	],
     target: 'map',
     view: new ol.View({
@@ -103,6 +126,11 @@ function sectMultiLine(coordinates) {
     return result;
 }
 
+function lineBezier(coordinates) {
+	let turfString = turf.bezierSpline(turf.toWgs84(turf.lineString(coordinates)));
+	return turf.toMercator(turfString)['geometry']['coordinates'];
+}
+
 selectToDelete.on(
     'select',
     function (e) {
@@ -111,6 +139,12 @@ selectToDelete.on(
             let pointToDeleteId = eFeature.getId() + 'start';
 			source.removeFeature(eFeature);
 			sourcePoint.removeFeature(sourcePoint.getFeatureById(pointToDeleteId));
+			for (let i = 1; i < eFeature.getGeometry().getCoordinates(); i++) {
+				try {
+					sourcePoint.removeFeature(sourcePoint.getFeatureById(eFeature.getId() + 'vertex' + i));
+				} catch {}
+			}
+			sourceTrac.removeFeature(sourceTrac.getFeatureById(eFeature.getId() + 'trac'));
         }
     }
 )
@@ -131,7 +165,9 @@ selectClick.on(
             
            
             let aniCoords = pathAnim.getGeometry().getCoordinates();
-
+			console.log(pathAnim.getId() + 'anim need');
+			let aniPoint = sourceAnim.getFeatureById(pathAnim.getId() + 'anim');
+			
             let i = 0;
 		
 			function myLoop() {
@@ -227,7 +263,14 @@ draw.on(
 		console.log(eFeature.getId() + ' ' + startPoint.getId());
 		idGen++;  // Инкремент глобальной переменной для следующего объекта
 		
-		let efCoordinates = eFeature.getGeometry().getCoordinates();
+		let efCoordinates = eFeature.getGeometry().getCoordinates()
+		// console.log('TURF' + JSON.stringify(lineBezier(efCoordinates)));
+		let tracLine = new ol.Feature({
+			geometry: new ol.geom.LineString(lineBezier(efCoordinates))
+		});
+		tracLine.setId(eFeature.getId() + 'trac');
+		tracLine.setStyle(traectoryStyle);
+		sourceTrac.addFeature(tracLine);
 		for (let i = 1; i < efCoordinates.length; i++) {
 			let vertexPoint = new ol.Feature({
 				geometry: new ol.geom.Point(efCoordinates[i])
@@ -236,6 +279,14 @@ draw.on(
 			vertexPoint.setStyle(vertexPointStyle);
 			sourcePoint.addFeature(vertexPoint);
 		}
+		
+		let aniPoint = new ol.Feature({
+			geometry: new ol.geom.Point(eFeature.getGeometry().getCoordinates()[0])
+		});
+		
+		aniPoint.setStyle(startPointStyle);
+		aniPoint.setId(eFeature.getId() + 'anim');
+		sourceAnim.addFeature(aniPoint);
     }
 );
 
@@ -267,7 +318,14 @@ modify.on(
 			vertexPoint.setStyle(vertexPointStyle);
 			sourcePoint.addFeature(vertexPoint);
 		}
-		
+		efCoordinates = eFeature.getGeometry().getCoordinates();
+		sourceTrac.removeFeature(sourceTrac.getFeatureById(eFeature.getId() + 'trac'));
+		let tracLine = new ol.Feature({
+			geometry: new ol.geom.LineString(lineBezier(efCoordinates))
+		});
+		tracLine.setId(eFeature.getId() + 'trac');
+		tracLine.setStyle(traectoryStyle);
+		sourceTrac.addFeature(tracLine);
 	}
 );
 
