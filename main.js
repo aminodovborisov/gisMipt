@@ -1,8 +1,3 @@
-let infoPanel = document.getElementById('info');
-console.log(infoPanel);
-
-// infoPanel.innerHTML = 'Здравствуйте! Рисуйте, правьте, показывайте, удаляйте.';
-
 let justSelect = false;  // Отличаем селект при рисовании от собственно пользовательского селекта
 
 let goOnAnimation = false;  // Прекращаем анимацию, если false
@@ -58,17 +53,18 @@ let startPointStyle = new ol.style.Style({
 let lineStringStyle = new ol.style.Style({
 	stroke: new ol.style.Stroke({
 		color: "#ff0000",
-		width: 0.5,
+		width: 0.3,
 		lineDash: [4, 3]
 	})
 });
 
 
 
+
 let traectoryStyle = new ol.style.Style({
 	stroke: new ol.style.Stroke({
 		color: "#ff0000",
-		width: 1.3
+		width: 2
 	})
 });
 
@@ -80,12 +76,25 @@ let vertexPointStyle = new ol.style.Style({
 	})
 });
 
+let iconImage = new ol.style.Icon({
+		anchor: [0.5, 0.5],
+		anchorXUnits: 'fraction',
+		anchorYUnits: 'fraction',
+		src: 'img/plane.png',
+		scale: [0.35, 0.35]
+	})
+
+var iconStyle = new ol.style.Style({
+	image: iconImage
+});
+
 let map = new ol.Map({
     layers: [
 		raster, 
 		vector,
+		vectorTrac,
 		vectorPoint,
-		vectorTrac
+		vectorAnim
 	],
     target: 'map',
     view: new ol.View({
@@ -94,10 +103,34 @@ let map = new ol.Map({
     }),
 });
 
+let coords_length;
+
 let draw = new ol.interaction.Draw({
     source: source,
-    type: 'LineString'
+    type: 'LineString',
+	geometryFunction: function(coords, geom) {
+    if (!geom) geom = new ol.geom.LineString([]);
+    geom.setCoordinates(coords);
+	let pointId = 0;
+    //if linestring changed
+    if (coords.length !== coords_length){
+		coords_length = coords.length;
+		console.log(coords.join('<br>'));
+		let feaDrawPoint = new ol.Feature({
+			geometry: new ol.geom.Point(coords[coords.length - 1])
+		});
+		feaDrawPoint.setStyle(vertexPointStyle);
+		feaDrawPoint.setId('drawpoint' + pointId);
+		console.log('drawpoint' + pointId);
+		pointId++;
+		sourcePoint.addFeature(feaDrawPoint);
+    }
+    return geom;
+  }
+	// style: [lineStringStyle, vertexPointStyle]
 });
+
+
 
 
 let modify = new ol.interaction.Modify({
@@ -105,17 +138,28 @@ let modify = new ol.interaction.Modify({
 	deleteCondition: ol.events.condition.doubleClick
 });
 
+let selectWhileDraw = new ol.interaction.Select({
+	layers: [vector]
+});
+
 let selectClick = new ol.interaction.Select({
-    hitTolerance: 5
+    hitTolerance: 5,
+	layers: [vector, vectorTrac]
 });
 
 let selectToDelete = new ol.interaction.Select({
-    hitTolerance: 5
+    hitTolerance: 5,
+	layers: [vector]
 });
 
-function sectMultiLine(coordinates) {
+function sectMultiLine(coordinates, isBezier) {
     let turfString = turf.bezierSpline(turf.toWgs84(turf.lineString(coordinates)));
-    let turfChunk = turf.toMercator(turf.lineChunk(turfString, 0.05));  // Получаем FeatureCollection
+    if (!isBezier) {
+		turfString = turf.bezierSpline(turf.toWgs84(turf.lineString(coordinates)));
+	} else {
+		turfString = turf.toWgs84(turf.lineString(coordinates));
+	}
+	let turfChunk = turf.toMercator(turf.lineChunk(turfString, 0.05));  // Получаем FeatureCollection
     let arrayOfLines = turfChunk.features;
     let result = [];
     let startPoint = arrayOfLines[0]['geometry']['coordinates'][0];  // Берём первую точку первого лайнстринга
@@ -137,14 +181,22 @@ selectToDelete.on(
         let eFeature = e.target.getFeatures().getArray()[0];  // Взяли фичу и ставим вопрос об удалении
         if (confirm('Удалить этот объект?')) {
             let pointToDeleteId = eFeature.getId() + 'start';
-			source.removeFeature(eFeature);
-			sourcePoint.removeFeature(sourcePoint.getFeatureById(pointToDeleteId));
-			for (let i = 1; i < eFeature.getGeometry().getCoordinates(); i++) {
+			console.log('Vertices ' + eFeature.getGeometry().getCoordinates().length);
+			for (let i = 1; i < eFeature.getGeometry().getCoordinates().length; i++) {
 				try {
+					console.log(eFeature.getId() + 'vertex' + i)
 					sourcePoint.removeFeature(sourcePoint.getFeatureById(eFeature.getId() + 'vertex' + i));
 				} catch {}
 			}
+			sourcePoint.removeFeature(sourcePoint.getFeatureById(pointToDeleteId));
+			source.removeFeature(eFeature);
 			sourceTrac.removeFeature(sourceTrac.getFeatureById(eFeature.getId() + 'trac'));
+			try {
+				// При наличии объекта анимации в соответствующем источнике мы его удаляем.
+				// А если его там нет, мы просто провалимся в исключения, а там ничего делать не надо.
+				// Нет объекта - ну и нет.
+				sourceAnim.removeFeature(sourceAnim.getFeatureById(eFeature.getId() + 'anim'));
+			} catch {}
         }
     }
 )
@@ -159,14 +211,17 @@ selectClick.on(
             let pathAnim = eFeatures.getArray()[0];  // Предусмотрено выделение только одного объекта. Стало быть, можем спокойно брать нулевой элемент массива.
 
             // Далее реализована анимация одной линии.
-            let prePathAnim = eFeatures.getArray()[0];
-            let sectedCoordinates = sectMultiLine(prePathAnim.getGeometry().getCoordinates());
+
+			selectClick.getFeatures().remove(pathAnim);
+			let sectedCoordinates = sectMultiLine(pathAnim.getGeometry().getCoordinates(), pathAnim.getId().includes('trac'));
+			
+
             console.log(JSON.stringify(sectedCoordinates));
             
            
             let aniCoords = pathAnim.getGeometry().getCoordinates();
-			console.log(pathAnim.getId() + 'anim need');
-			let aniPoint = sourceAnim.getFeatureById(pathAnim.getId() + 'anim');
+			console.log(pathAnim.getId().replace('trac', '') + 'anim need');
+			let aniPoint = sourceAnim.getFeatureById(pathAnim.getId().replace('trac', '') + 'anim');
 			
             let i = 0;
 		
@@ -177,6 +232,19 @@ selectClick.on(
                             i = 0;        
                         }
                         aniPoint.getGeometry().setCoordinates(sectedCoordinates[i]);
+						if (i < sectedCoordinates.length - 1) {
+							let startPoint = sectedCoordinates[i];
+							let endPoint = sectedCoordinates[i + 1];
+							let turfStart = turf.toWgs84(turf.point(startPoint));
+							let turfEnd = turf.toWgs84(turf.point(endPoint));
+							let turfAngle = turf.bearing(turfStart, turfEnd);
+							console.log(turfAngle);
+							console.log(sectedCoordinates[i]);
+							iconImage.setRotation(turfAngle * Math.PI / 180);
+						}
+						if (i === 0) {
+							
+						}
                         i++;
                         if (i <= sectedCoordinates.length) {
                             myLoop();        
@@ -201,9 +269,12 @@ map.on(
 );
 */
 
-// TODO: добавить слушатель события "двойной клик". Если event.target окажется лайнстрингом, то пробежимся по
-// координатам вершин и найдём ту, чьи координаты ближе всего к координатам щелчка. Вернее, даже не просто ближе,
-// а подходят под hitTolerance. И эту точку удаляем.
+draw.on(
+	'propertychange',
+	function (e) {
+		console.log('Hi!');
+	}
+)
 
 draw.on(
     'drawstart',
@@ -235,15 +306,12 @@ draw.on(
 )
 
 
-
 // По просьбе Алексея, включаем режим редактирования траекторий
 // после окончания рисования.
 draw.on(
     'drawend',
     function (e) {
-        // TODO: Сделать так, чтобы вместо основного лайнстринга отображался turf.bezierSpline,
-        // построенный на основе этого лайнстринга. Кроме того, должны отображаться контрольные точки,
-        // то есть вершины этого сплайна.
+	
         map.addInteraction(modify);
         map.removeInteraction(draw);
         map.removeInteraction(selectClick);
@@ -259,12 +327,10 @@ draw.on(
 		});
 		startPoint.setId(eFeature.getId() + 'start');
 		startPoint.setStyle(startPointStyle);
-		sourcePoint.addFeature(startPoint);
-		console.log(eFeature.getId() + ' ' + startPoint.getId());
+		
 		idGen++;  // Инкремент глобальной переменной для следующего объекта
 		
 		let efCoordinates = eFeature.getGeometry().getCoordinates()
-		// console.log('TURF' + JSON.stringify(lineBezier(efCoordinates)));
 		let tracLine = new ol.Feature({
 			geometry: new ol.geom.LineString(lineBezier(efCoordinates))
 		});
@@ -279,12 +345,18 @@ draw.on(
 			vertexPoint.setStyle(vertexPointStyle);
 			sourcePoint.addFeature(vertexPoint);
 		}
+		sourcePoint.addFeature(startPoint);
 		
 		let aniPoint = new ol.Feature({
 			geometry: new ol.geom.Point(eFeature.getGeometry().getCoordinates()[0])
 		});
 		
-		aniPoint.setStyle(startPointStyle);
+		let start = turf.toWgs84(turf.point(eFeature.getGeometry().getCoordinates()[0]));
+		let end = turf.toWgs84(turf.point(eFeature.getGeometry().getCoordinates()[1]));
+		let angle = turf.bearing(start, end);
+		iconImage.setRotation(angle * Math.PI / 180);
+		aniPoint.setStyle(iconStyle);
+		
 		aniPoint.setId(eFeature.getId() + 'anim');
 		sourceAnim.addFeature(aniPoint);
     }
@@ -332,7 +404,7 @@ modify.on(
 let deleteByDbClick = false;  // Глобальная переменная - включен ли режим удаления вершины по двойному щелчку
 
 function drawObject() {
-    map.removeInteraction(modify);
+	map.removeInteraction(modify);
     map.addInteraction(draw);
     map.removeInteraction(selectClick);
 }
@@ -360,12 +432,7 @@ function onStop() {
     map.removeInteraction(modify);
 
     // Теперь удаляем анимированный объект.
-    try {
-        let featureToDelete = source.getFeatureById('aniPoint');
-        source.removeFeature(featureToDelete);
-    } catch {
-        // А тут мы просто ничего не делаем.
-    }
+    sourceAnim.clear();
     
 }
 
