@@ -1,0 +1,38 @@
+#main{
+	width: 98vw;
+	height: 98vh;
+	margin: 0 auto;
+}
+
+#map {
+	margin: 0 auto;
+	width: 100%;
+}
+
+.panel {
+	display: inline-block;
+	margin: 0 10px 0 0;
+}
+
+
+.button {
+	height: 35px;
+	width: 35px;
+	background-size: 95%;
+}
+
+#button_new {
+	background-image: url("img/drawNew.png");
+}
+
+#button_delete {
+	background-image: url("img/remove.png");
+}
+
+#button_start {
+	background-image: url("img/startAnim.png");
+}
+
+#button_stop {
+	background-image: url("img/stopAnim.png");
+}
