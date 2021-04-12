@@ -6,7 +6,8 @@
         <script src="https://cdn.jsdelivr.net/gh/openlayers/openlayers.github.io@master/en/v6.5.0/build/ol.js"></script>
         <script src='https://unpkg.com/@turf/turf@6.3.0/turf.min.js'></script>
         <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/openlayers/openlayers.github.io@master/en/v6.5.0/css/ol.css" type="text/css">
-        <style>
+        <link rel="stylesheet" href="styles.css" type="text/css">
+		<style>
             .map {
                 width: 90vw;
                 height: 80vh;
@@ -14,15 +15,22 @@
         </style>
     </head>
     <body>
-        <button onclick="drawObject()">Создать</button>
-        <button onclick="modifyObject()">Править</button>
-        <button onclick="deleteObject()">Удалить</button>
-        <button id="btnAnima" onclick="onSelect()">Показать</button>
-        <button onclick="onStop()">Остановить</button>
-        <p />
-        <div id="map" class="map"></div>
-		<p />
-        <script src="main.js"></script>
-		<div id="info"></div>
+		<div id="main">
+			<div>
+				<div class="panel" id="panel_draw">
+					<button class="button" id="button_new" onclick="drawObject()" title="Создать траекторию"></button>
+					<button class="button" id="button_delete" onclick="deleteObject()" title="Удалить траекторию"></button>
+				</div>
+				<div class="panel" id="panel_anim">
+					<button class="button" id="button_start" onclick="onSelect()" title="Запустить анимацию"></button>
+					<button class="button" id="button_stop" onclick="onStop()" title="Остановить анимацию"></button>
+				</div>
+			</div>
+			<p />
+			<div id="map" class="map"></div>
+			<p />
+			<script src="main.js"></script>
+			<p id="info" />
+		</div>
     </body>
 </html>
